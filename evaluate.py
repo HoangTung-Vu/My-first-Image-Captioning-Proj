@@ -8,20 +8,31 @@ from tqdm import tqdm
 import nltk
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 import numpy as np
+from typing import Dict, List, Tuple, Optional, Union, Any, Callable
 from model import CNNtoRNN
-
 from dataloader import get_loader
+from functools import lru_cache
 
 class Evaluator:
-    def __init__(self,
-                 data_root='data/flickr8k/Flicker8k_Dataset',
-                 captions_file='data/flickr8k/captions.txt',
-                 checkpoint_path='checkpoints/latest_checkpoint.pth.tar',
-                 beam_search=True,
-                 device=None,
-                 batch_size=1):
+    def __init__(
+        self,
+        data_root: str = 'data/flickr8k/Flicker8k_Dataset',
+        captions_file: str = 'data/flickr8k/captions.txt',
+        checkpoint_path: str = 'checkpoints/latest_checkpoint.pth.tar',
+        beam_search: bool = True,
+        device: Optional[torch.device] = None,
+        batch_size: int = 1
+    ):
         """
         Initialize the Evaluator with parameters
+        
+        Args:
+            data_root: Path to the dataset images
+            captions_file: Path to the captions file
+            checkpoint_path: Path to the model checkpoint
+            beam_search: Whether to use beam search for caption generation
+            device: Device to run the model on (cuda or cpu)
+            batch_size: Batch size for evaluation
         """
         # Parameters
         self.data_root = data_root
@@ -31,27 +42,36 @@ class Evaluator:
         self.batch_size = batch_size
         
         # Set device
-        if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        else:
-            self.device = device
+        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             
         # Download NLTK resources
-        self.download_nltk_resources()
+        self._download_nltk_resources()
         
         # Initialize model, data loader, etc. to None
         self.model = None
         self.vocab = None
         self.data_loader = None
         
-    def download_nltk_resources(self):
+        # Image transform
+        self.transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+        ])
+    
+    def _download_nltk_resources(self) -> None:
         """Download required NLTK resources"""
         try:
             nltk.data.find('tokenizers/punkt')
         except LookupError:
-            nltk.download('punkt')
+            nltk.download('punkt', quiet=True)
     
-    def load_model(self, model_class=None, checkpoint_path=None, **model_kwargs):
+    def load_model(
+        self, 
+        model_class: Optional[Any] = None, 
+        checkpoint_path: Optional[str] = None, 
+        **model_kwargs
+    ) -> Tuple[Any, Any]:
         """
         Load model from checkpoint
         
@@ -59,6 +79,9 @@ class Evaluator:
             model_class: The model class to instantiate
             checkpoint_path: Path to the checkpoint file (uses self.checkpoint_path if None)
             model_kwargs: Additional keyword arguments for the model
+            
+        Returns:
+            Tuple of (model, vocab)
         """
         if checkpoint_path is None:
             checkpoint_path = self.checkpoint_path
@@ -66,6 +89,7 @@ class Evaluator:
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
         
+        # Load checkpoint with appropriate device mapping
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.vocab = checkpoint['vocab']
         
@@ -89,32 +113,35 @@ class Evaluator:
             
         return self.model, self.vocab
     
-    def load_data(self):
-        """Load and prepare the dataset"""
-        # Image preprocessing
-        transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-        ])
+    def load_data(self) -> Any:
+        """
+        Load and prepare the dataset
         
+        Returns:
+            DataLoader object
+        """
         # Load data
         self.data_loader, _ = get_loader(
             root_folder=self.data_root,
             annotation_file=self.captions_file,
-            transform=transform,
+            transform=self.transform,
             batch_size=self.batch_size,
             shuffle=False,  # No need to shuffle for evaluation
+            num_workers=4,  # Use multiple workers for faster loading
         )
         
         return self.data_loader
     
-    def evaluate_bleu(self, max_samples=500):
+    @torch.no_grad()  # Disable gradient calculation for evaluation
+    def evaluate_bleu(self, max_samples: int = 500) -> Dict[str, float]:
         """
         Evaluate model using BLEU score
         
         Args:
             max_samples: Maximum number of samples to evaluate
+            
+        Returns:
+            Dictionary of BLEU scores
         """
         if self.model is None:
             raise ValueError("Model must be loaded before evaluation")
@@ -122,23 +149,25 @@ class Evaluator:
         self.model.eval()
         
         # Lists to store references and hypotheses
-        references = []
-        hypotheses = []
+        references: List[List[List[str]]] = []
+        hypotheses: List[List[str]] = []
         
         # Process each image in the dataset
         print("Generating captions for evaluation...")
         for idx, (image, caption) in enumerate(tqdm(self.data_loader.dataset)):
+            if idx >= max_samples:  # Only process a subset for faster evaluation
+                break
+                
             # Prepare image
             image = image.unsqueeze(0).to(self.device)
             
             # Generate caption
-            with torch.no_grad():
-                if self.beam_search and hasattr(self.model, 'caption_image_beam_search'):
-                    predicted_caption = self.model.caption_image_beam_search(image, self.vocab, beam_size=5)
-                elif hasattr(self.model, 'caption_image_greedy'):
-                    predicted_caption = self.model.caption_image_greedy(image, self.vocab)
-                else:
-                    raise ValueError("Model must have caption_image_greedy or caption_image_beam_search method")
+            if self.beam_search and hasattr(self.model, 'caption_image_beam_search'):
+                predicted_caption = self.model.caption_image_beam_search(image, self.vocab, beam_size=5)
+            elif hasattr(self.model, 'caption_image_greedy'):
+                predicted_caption = self.model.caption_image_greedy(image, self.vocab)
+            else:
+                raise ValueError("Model must have caption_image_greedy or caption_image_beam_search method")
             
             # Process reference caption
             reference = [self.vocab.itos[idx.item()] for idx in caption]
@@ -156,27 +185,49 @@ class Evaluator:
             # Add to lists
             references.append([reference])  # corpus_bleu expects a list of list of references
             hypotheses.append(hypothesis)
-            
-            # Only process a subset for faster evaluation
-            if idx >= max_samples:  # Adjust this number as needed
-                break
         
         # Calculate BLEU scores
         print("Calculating BLEU scores...")
         smoothing = SmoothingFunction().method1
-        bleu1 = corpus_bleu(references, hypotheses, weights=(1, 0, 0, 0), smoothing_function=smoothing)
-        bleu2 = corpus_bleu(references, hypotheses, weights=(0.5, 0.5, 0, 0), smoothing_function=smoothing)
-        bleu3 = corpus_bleu(references, hypotheses, weights=(0.33, 0.33, 0.33, 0), smoothing_function=smoothing)
-        bleu4 = corpus_bleu(references, hypotheses, weights=(0.25, 0.25, 0.25, 0.25), smoothing_function=smoothing)
         
-        return {
-            "BLEU-1": bleu1 * 100,
-            "BLEU-2": bleu2 * 100,
-            "BLEU-3": bleu3 * 100,
-            "BLEU-4": bleu4 * 100
+        # Calculate BLEU scores for different n-gram weights
+        bleu_scores = {
+            "BLEU-1": self._calculate_bleu(references, hypotheses, (1, 0, 0, 0), smoothing),
+            "BLEU-2": self._calculate_bleu(references, hypotheses, (0.5, 0.5, 0, 0), smoothing),
+            "BLEU-3": self._calculate_bleu(references, hypotheses, (0.33, 0.33, 0.33, 0), smoothing),
+            "BLEU-4": self._calculate_bleu(references, hypotheses, (0.25, 0.25, 0.25, 0.25), smoothing)
         }
+        
+        return bleu_scores
     
-    def visualize_examples(self, num_examples=5):
+    @staticmethod
+    def _calculate_bleu(
+        references: List[List[List[str]]], 
+        hypotheses: List[List[str]], 
+        weights: Tuple[float, ...], 
+        smoothing_function: Callable
+    ) -> float:
+        """
+        Calculate BLEU score with specific weights
+        
+        Args:
+            references: List of reference captions
+            hypotheses: List of predicted captions
+            weights: Weights for n-grams
+            smoothing_function: Smoothing function for BLEU calculation
+            
+        Returns:
+            BLEU score (0-100)
+        """
+        return corpus_bleu(
+            references, 
+            hypotheses, 
+            weights=weights, 
+            smoothing_function=smoothing_function
+        ) * 100
+    
+    @torch.no_grad()  # Disable gradient calculation for visualization
+    def visualize_examples(self, num_examples: int = 5) -> None:
         """
         Visualize some example predictions
         
@@ -198,20 +249,20 @@ class Evaluator:
             
             # Generate caption
             image_tensor = image.unsqueeze(0).to(self.device)
-            with torch.no_grad():
-                if hasattr(self.model, 'caption_image_greedy'):
-                    greedy_caption = self.model.caption_image_greedy(image_tensor, self.vocab)
-                    greedy_caption = ' '.join([token for token in greedy_caption 
-                                              if token not in ["<SOS>", "<EOS>", "<PAD>", "<UNK>"]])
-                else:
-                    greedy_caption = "Greedy caption method not available"
-                
-                if hasattr(self.model, 'caption_image_beam_search'):
-                    beam_caption = self.model.caption_image_beam_search(image_tensor, self.vocab, beam_size=5)
-                    beam_caption = ' '.join([token for token in beam_caption 
-                                            if token not in ["<SOS>", "<EOS>", "<PAD>", "<UNK>"]])
-                else:
-                    beam_caption = "Beam search method not available"
+            
+            # Generate captions using different methods
+            greedy_caption = "Greedy caption method not available"
+            beam_caption = "Beam search method not available"
+            
+            if hasattr(self.model, 'caption_image_greedy'):
+                greedy_tokens = self.model.caption_image_greedy(image_tensor, self.vocab)
+                greedy_caption = ' '.join([token for token in greedy_tokens 
+                                          if token not in ["<SOS>", "<EOS>", "<PAD>", "<UNK>"]])
+            
+            if hasattr(self.model, 'caption_image_beam_search'):
+                beam_tokens = self.model.caption_image_beam_search(image_tensor, self.vocab, beam_size=5)
+                beam_caption = ' '.join([token for token in beam_tokens 
+                                        if token not in ["<SOS>", "<EOS>", "<PAD>", "<UNK>"]])
             
             # Process reference caption
             reference = [self.vocab.itos[idx.item()] for idx in caption]
@@ -231,7 +282,13 @@ class Evaluator:
         plt.savefig('evaluation_examples.png')
         plt.close()
         
-    def run_evaluation(self, model_class=None, visualize=True, max_samples=500, **model_kwargs):
+    def run_evaluation(
+        self, 
+        model_class: Optional[Any] = None, 
+        visualize: bool = True, 
+        max_samples: int = 500, 
+        **model_kwargs
+    ) -> Dict[str, float]:
         """
         Run the full evaluation process
         
@@ -240,6 +297,9 @@ class Evaluator:
             visualize: Whether to visualize examples
             max_samples: Maximum number of samples to evaluate
             model_kwargs: Additional keyword arguments for the model
+            
+        Returns:
+            Dictionary of BLEU scores
         """
         # Load model
         self.load_model(model_class, **model_kwargs)
@@ -266,10 +326,10 @@ class Evaluator:
             print("Examples saved to 'evaluation_examples.png'")
             
         return bleu_scores
-    
+
 
 if __name__  == "__main__":
-        # Initialize evaluator
+    # Initialize evaluator
     evaluator = Evaluator(
         data_root='data/flickr8k/Flicker8k_Dataset',
         captions_file='data/flickr8k/captions.txt',
