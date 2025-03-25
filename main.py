@@ -18,11 +18,11 @@ def parse_args() -> argparse.Namespace:
                         help='path to captions file')
     
     # Model parameters
-    parser.add_argument('--embed_size', type=int, default=256,
+    parser.add_argument('--embed_size', type=int, default=512,  # Increased from 256 to 512
                         help='size of word embeddings')
-    parser.add_argument('--hidden_size', type=int, default=256,
+    parser.add_argument('--hidden_size', type=int, default=512,  # Increased from 256 to 512
                         help='size of LSTM hidden state')
-    parser.add_argument('--num_layers', type=int, default=1,
+    parser.add_argument('--num_layers', type=int, default=1,  # Increased from 1 to 2
                         help='number of LSTM layers')
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='dropout probability')
@@ -30,11 +30,11 @@ def parse_args() -> argparse.Namespace:
     # Training parameters
     parser.add_argument('--batch_size', type=int, default=32,
                         help='batch size for training')
-    parser.add_argument('--num_epochs', type=int, default=15,
+    parser.add_argument('--num_epochs', type=int, default=20,
                         help='number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=3e-4,
                         help='learning rate')
-    parser.add_argument('--freeze_cnn_epochs', type=int, default=5,
+    parser.add_argument('--freeze_cnn_epochs', type=int, default=5,  # Reduced to allow earlier fine-tuning
                         help='number of epochs to freeze CNN')
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints',
                         help='directory to save checkpoints')
@@ -42,11 +42,11 @@ def parse_args() -> argparse.Namespace:
                         help='resume training from checkpoint')
     parser.add_argument('--checkpoint_path', type=str, default=None,
                         help='path to checkpoint to resume from')
-    parser.add_argument('--save_step', type=int, default=1,
+    parser.add_argument('--save_step', type=int, default=2,
                         help='frequency of saving checkpoints (in epochs)')
     parser.add_argument('--use_mixed_precision', action='store_true',
                         help='use mixed precision training')
-    parser.add_argument('--early_stopping_patience', type=int, default=5,
+    parser.add_argument('--early_stopping_patience', type=int, default=3,
                         help='patience for early stopping')
     
     # Evaluation parameters
@@ -56,10 +56,10 @@ def parse_args() -> argparse.Namespace:
                         help='use beam search for evaluation')
     parser.add_argument('--beam_size', type=int, default=5,
                         help='beam size for beam search')
-    parser.add_argument('--max_eval_samples', type=int, default=500,
-                        help='maximum number of samples to evaluate')
-    parser.add_argument('--visualize', action='store_true',
+    parser.add_argument('--visualize', type=bool, default=True,
                         help='visualize examples during evaluation')
+    parser.add_argument('--visualization_dir', type=str, default='visualization_results',
+                        help='directory to save visualization results')
     
     # Device parameters
     parser.add_argument('--device', type=str, default=None,
@@ -161,7 +161,8 @@ def main() -> None:
             checkpoint_path=args.checkpoint_path or os.path.join(args.checkpoint_dir, 'best_model.pth.tar'),
             beam_search=args.beam_search,
             device=device,
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            visualization_dir=args.visualization_dir
         )
         
         # Run evaluation
@@ -171,7 +172,6 @@ def main() -> None:
             hidden_size=args.hidden_size,
             num_layers=args.num_layers,
             visualize=args.visualize,
-            max_samples=args.max_eval_samples,
             dropout_rate=args.dropout
         )
         
