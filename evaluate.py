@@ -117,7 +117,6 @@ class Evaluator:
                 
             # Load model weights
             self.model.load_state_dict(checkpoint['model_state_dict'])
-            
         return self.model, self.vocab
     
     def load_data(self) -> Any:
@@ -317,7 +316,7 @@ class Evaluator:
             plt.axis('off')
             
             # Create caption text
-            caption_text = f"Image: {image_id}\n\n"
+            caption_text = ""
             caption_text += "References:\n"
             for j, ref in enumerate(reference_captions, 1):
                 caption_text += f"{j}. {ref}\n"
@@ -359,7 +358,6 @@ class Evaluator:
         
         # Load data
         self.load_data()
-        
         # Evaluate BLEU score
         bleu_scores = self.evaluate_bleu()
         
@@ -386,7 +384,7 @@ if __name__  == "__main__":
     evaluator = Evaluator(
         data_root='data/flickr8k/Flicker8k_Dataset',
         captions_file='data/flickr8k/captions.txt',
-        checkpoint_path='checkpoints/latest_checkpoint.pth.tar',
+        checkpoint_path='checkpoints/best_model.pth.tar',
         beam_search=True,
         device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
         batch_size=1,
@@ -398,7 +396,7 @@ if __name__  == "__main__":
         model_class=CNNtoRNN,
         embed_size=512,  # Increased from 256 to 512
         hidden_size=512,  # Increased from 256 to 512
-        num_layers=2,    # Increased from 1 to 2
+        num_layers=1,    # Increased from 1 to 2
         visualize=True,
         num_examples=10
     )
