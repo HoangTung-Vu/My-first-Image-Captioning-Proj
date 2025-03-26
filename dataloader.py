@@ -19,7 +19,7 @@ except OSError:
     spacy_eng = spacy.load("en_core_web_sm")
 
 class Vocabulary:
-    def __init__(self, freq_threshold: int = 5):
+    def __init__(self, freq_threshold: int = 1):
         """
         Initialize vocabulary with special tokens
         
@@ -95,7 +95,7 @@ class FlickrDataset(Dataset):
         root: str = "data/flickr8k/Flicker8k_Dataset", 
         captions_file: str = "data/flickr8k/captions.txt", 
         transform: Optional[Callable] = None, 
-        freq_threshold: int = 5,
+        freq_threshold: int = 1,
         img_cache_size: int = 100  # Number of images to cache in memory
     ):
         """

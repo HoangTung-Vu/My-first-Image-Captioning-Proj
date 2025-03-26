@@ -18,11 +18,11 @@ def parse_args() -> argparse.Namespace:
                         help='path to captions file')
     
     # Model parameters
-    parser.add_argument('--embed_size', type=int, default=512,  # Increased from 256 to 512
+    parser.add_argument('--embed_size', type=int, default=256,  # Increased from 256 to 512
                         help='size of word embeddings')
     parser.add_argument('--hidden_size', type=int, default=512,  # Increased from 256 to 512
                         help='size of LSTM hidden state')
-    parser.add_argument('--num_layers', type=int, default=1,  # Increased from 1 to 2
+    parser.add_argument('--num_layers', type=int, default=1, 
                         help='number of LSTM layers')
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='dropout probability')
@@ -30,11 +30,11 @@ def parse_args() -> argparse.Namespace:
     # Training parameters
     parser.add_argument('--batch_size', type=int, default=32,
                         help='batch size for training')
-    parser.add_argument('--num_epochs', type=int, default=20,
+    parser.add_argument('--num_epochs', type=int, default=30,
                         help='number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=3e-4,
                         help='learning rate')
-    parser.add_argument('--freeze_cnn_epochs', type=int, default=5,  # Reduced to allow earlier fine-tuning
+    parser.add_argument('--freeze_cnn_epochs', type=int, default=8,  # Reduced to allow earlier fine-tuning
                         help='number of epochs to freeze CNN')
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoints',
                         help='directory to save checkpoints')

@@ -200,7 +200,7 @@ class Evaluator:
             
             # Generate caption
             if self.beam_search and hasattr(self.model, 'caption_image_beam_search'):
-                predicted_caption = self.model.caption_image_beam_search(image_tensor, self.vocab, beam_size=5)
+                predicted_caption = self.model.caption_image_beam_search(image_tensor, self.vocab, beam_size=3)
             elif hasattr(self.model, 'caption_image_greedy'):
                 predicted_caption = self.model.caption_image_greedy(image_tensor, self.vocab)
             else:
@@ -394,7 +394,7 @@ if __name__  == "__main__":
     # Run evaluation with CNNtoRNN model
     evaluator.run_evaluation(
         model_class=CNNtoRNN,
-        embed_size=512,  # Increased from 256 to 512
+        embed_size=256,  # Increased from 256 to 512
         hidden_size=512,  # Increased from 256 to 512
         num_layers=1,    # Increased from 1 to 2
         visualize=True,
